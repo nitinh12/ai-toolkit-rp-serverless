@@ -1,4 +1,4 @@
-FROM ostris/aitoolkit:sha256:e150f201456c2f6ee9eb3737a8077fadb2faa694f3b8f304a9424b9fa22837f5
+FROM ostris/aitoolkit:latest
 
 # Install runpod and any additional dependencies
 RUN pip install runpod
