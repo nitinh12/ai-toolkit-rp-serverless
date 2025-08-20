@@ -3,8 +3,9 @@ import subprocess
 import json
 import os
 import logging
+import sys
 
-# Set up logging
+# Set up logging to show in RunPod console
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,13 @@ def handler(event):
         # Create output directory if it doesn't exist
         os.makedirs('/runpod-volume/lora-files', exist_ok=True)
         
+        # Initialize log file
+        log_file_path = '/runpod-volume/lora-files/training.log'
+        with open(log_file_path, 'w') as log_file:
+            log_file.write(f"Training started: {training_name}\n")
+            log_file.write(f"Config: {config_content[:200]}...\n")
+            log_file.write("="*50 + "\n")
+        
         # Use the correct AI Toolkit path
         cmd = [
             'python', 
@@ -52,33 +60,72 @@ def handler(event):
         
         logger.info(f"Starting training process with command: {' '.join(cmd)}")
         
-        # Run the training process with longer timeout for training
-        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=7200)  # 2 hour timeout
+        # Run the training process with real-time output streaming
+        process = subprocess.Popen(
+            cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT, 
+            universal_newlines=True,
+            env=env,
+            bufsize=1
+        )
         
-        if result.returncode == 0:
+        # Stream output in real-time
+        training_output = []
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                output_clean = output.strip()
+                
+                # Print to console so it shows in RunPod logs
+                print(f"[TRAINING] {output_clean}")
+                sys.stdout.flush()  # Force flush to show immediately
+                
+                # Save logs to network storage too
+                with open(log_file_path, 'a') as log_file:
+                    log_file.write(f"{output_clean}\n")
+                
+                training_output.append(output_clean)
+        
+        # Wait for process to complete
+        return_code = process.poll()
+        
+        # Write final status to log file
+        with open(log_file_path, 'a') as log_file:
+            log_file.write("="*50 + "\n")
+            log_file.write(f"Training completed with return code: {return_code}\n")
+        
+        if return_code == 0:
             logger.info("Training completed successfully")
             return {
                 "status": "completed",
                 "message": "Training completed successfully",
-                "output": result.stdout,
-                "config_used": config_content
+                "output": "\n".join(training_output[-50:]),  # Last 50 lines
+                "log_file": log_file_path
             }
         else:
-            logger.error(f"Training failed with return code {result.returncode}")
+            logger.error(f"Training failed with return code {return_code}")
             return {
                 "status": "failed",
                 "message": "Training failed",
-                "error": result.stderr,
-                "output": result.stdout
+                "error": f"Process exited with code {return_code}",
+                "output": "\n".join(training_output[-50:]),  # Last 50 lines
+                "log_file": log_file_path
             }
             
-    except subprocess.TimeoutExpired:
-        return {
-            "status": "timeout",
-            "message": "Training timed out after 2 hours"
-        }
     except Exception as e:
         logger.error(f"Handler error: {str(e)}")
+        
+        # Log the error to network storage too
+        try:
+            log_file_path = '/runpod-volume/lora-files/training.log'
+            with open(log_file_path, 'a') as log_file:
+                log_file.write(f"ERROR: {str(e)}\n")
+        except:
+            pass
+            
         return {
             "status": "error",
             "message": str(e)
