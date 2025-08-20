@@ -4,17 +4,15 @@ import os
 
 def handler(event):
     try:
-        # Explore the container structure
+        # Check network storage mounting
         commands = [
-            "find /app -name '*.py' -type f | head -20",
-            "find /workspace -name '*.py' -type f | head -20", 
-            "find / -name 'run.py' -type f 2>/dev/null | head -10",
-            "find / -name '*toolkit*' -type d 2>/dev/null | head -10",
-            "ls -la /app/",
+            "ls -la /",
             "ls -la /workspace/",
-            "which python",
-            "python --version",
-            "pip list | grep -i toolkit"
+            "df -h",
+            "mount | grep workspace",
+            "find /workspace -type d | head -10",
+            "ls -la /workspace/dataset/",
+            "ls -la /workspace/lora-files/"
         ]
         
         results = {}
